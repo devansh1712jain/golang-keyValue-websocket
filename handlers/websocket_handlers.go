@@ -110,6 +110,11 @@ func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 					Event: "expired",
 					Key:   msg.Payload,
 				}
+			case "__keyevent@0__:del":
+				data = PubSubMessage{
+					Event: "deleted",
+					Key:   msg.Payload,
+				}
 			default:
 				continue
 			}

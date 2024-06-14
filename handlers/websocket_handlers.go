@@ -21,9 +21,10 @@ var (
 )
 
 type PubSubMessage struct {
-	Event string `json:"event"`
-	Key   string `json:"key"`
-	Value string `json:"value,omitempty"`
+	Event    string `json:"event"`
+	Key      string `json:"key"`
+	Value    string `json:"value,omitempty"`
+	TimeLeft int64  `json:"time_left"`
 }
 
 func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
@@ -51,9 +52,41 @@ func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 
+			// if string(message) == "get_all_data" {
+			// 	log.Print("'hoi dslkfkdnfkjn'")
+			// 	data := make(map[string]string)
+
+			// 	keys, err := client.Keys(ctx, "*").Result()
+			// 	if err != nil {
+			// 		log.Printf("Error retrieving keys from Redis: %v\n", err)
+			// 		return
+			// 	}
+
+			// 	for _, key := range keys {
+			// 		value, err := client.Get(ctx, key).Result()
+			// 		if err != nil {
+			// 			log.Printf("Error retrieving value for key %s: %v\n", key, err)
+			// 			continue
+			// 		}
+			// 		data[key] = value
+			// 	}
+
+			// 	log.Printf("Data sent via WebSocket: %v\n", data)
+			// 	if err := conn.WriteJSON(data); err != nil {
+			// 		log.Printf("Error writing JSON to WebSocket connection: %v\n", err)
+			// 		return
+			// 	}
+			// } else {
+			// 	log.Printf("Unknown command: %s\n", message)
+			// 	if err := conn.WriteMessage(websocket.TextMessage, []byte("Unknown command")); err != nil {
+			// 		log.Printf("Error writing message to WebSocket connection: %v\n", err)
+			// 		break
+			// 	}
+			// }
+
 			if string(message) == "get_all_data" {
 				log.Print("'hoi dslkfkdnfkjn'")
-				data := make(map[string]string)
+				var data []PubSubMessage
 
 				keys, err := client.Keys(ctx, "*").Result()
 				if err != nil {
@@ -67,7 +100,15 @@ func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 						log.Printf("Error retrieving value for key %s: %v\n", key, err)
 						continue
 					}
-					data[key] = value
+					ttl, _ := client.TTL(ctx, key).Result()
+					// Convert TTL duration to milliseconds
+					timeLeftMilliseconds := ttl.Milliseconds()
+
+					data = append(data, PubSubMessage{
+						Key:      key,
+						Value:    value,
+						TimeLeft: timeLeftMilliseconds,
+					})
 				}
 
 				log.Printf("Data sent via WebSocket: %v\n", data)
@@ -82,6 +123,7 @@ func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+
 		}
 	}()
 
@@ -100,10 +142,17 @@ func WebSocketHandler(w http.ResponseWriter, r *http.Request) {
 			switch msg.Channel {
 			case "__keyevent@0__:set":
 				value, _ := client.Get(ctx, msg.Payload).Result()
+				ttl, _ := client.TTL(ctx, msg.Payload).Result()
+				timeLeftMilliseconds := ttl.Milliseconds()
+
+				// if err != nil {
+				// 	log.Fatalf("Error getting TTL for key %s: %v", key, err)
+				// }
 				data = PubSubMessage{
-					Event: "set",
-					Key:   msg.Payload,
-					Value: value,
+					Event:    "set",
+					Key:      msg.Payload,
+					Value:    value,
+					TimeLeft: timeLeftMilliseconds,
 				}
 			case "__keyevent@0__:expired":
 				data = PubSubMessage{
